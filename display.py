@@ -1,13 +1,13 @@
 import sys
 import rclpy
 from rclpy.node import Node
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout , QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout , QHBoxLayout , QPushButton , QGridLayout
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import Qt, QTimer
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
-
+from std_msgs.msg import String
 class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('image_subscriber')
@@ -68,6 +68,28 @@ class ImageViewer(QWidget):
         self.timer.timeout.connect(self.update_image)
         self.timer.start(30) 
 
+        self.direction_publisher = self.ros_node.create_publisher(String, "/button_cmd", 10)
+
+    
+    def keyPressEvent(self, event):
+        msg = String()
+        if event.key() == Qt.Key_W:
+            msg.data = "up"
+        elif event.key() == Qt.Key_S:
+            msg.data = "down"
+        elif event.key() == Qt.Key_A:
+            msg.data = "left"
+        elif event.key() == Qt.Key_D:
+            msg.data = "right"
+        elif event.key() == Qt.Key_Left:
+            msg.data = "yaw_left"
+        elif event.key() == Qt.Key_Right:
+            msg.data = "yaw_right"
+        else:
+            return
+        self.direction_publisher.publish(msg)
+
+
     def update_image(self):
         if self.ros_node.image_latest_frame is not None:
             rgb_image = cv2.cvtColor(self.ros_node.image_latest_frame, cv2.COLOR_BGR2RGB)
@@ -91,6 +113,12 @@ class ImageViewer(QWidget):
             bytes_per_line = ch * w
             qt_image = QImage(depth_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
             self.depth_label.setPixmap(QPixmap.fromImage(qt_image))
+    
+    def direction_publish_command(self, cmd):
+        msg = String()
+        msg.data = cmd
+        self.direction_publisher.publish(msg)
+            
 
 
 def main(args=None):
@@ -100,7 +128,6 @@ def main(args=None):
     app = QApplication(sys.argv)
     viewer = ImageViewer(ros_node)
     viewer.show()
-
     timer = QTimer()
     timer.timeout.connect(lambda: rclpy.spin_once(ros_node, timeout_sec=0.01))
     timer.start(10)
