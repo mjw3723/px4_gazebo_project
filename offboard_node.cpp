@@ -19,9 +19,10 @@ public:
     offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
     traj_pub_          = create_publisher<px4_msgs::msg::TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
     cmd_pub_           = create_publisher<px4_msgs::msg::VehicleCommand>("/fmu/in/vehicle_command", 10);
-
+    rclcpp::QoS qos_profile(10);
+    qos_profile.best_effort(); 
     pos_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      "/fmu/out/vehicle_local_position", 10,
+      "/fmu/out/vehicle_local_position_v1",  qos_profile,
       std::bind(&OffboardNode::positionCallback, this, std::placeholders::_1)
     );
 
@@ -30,10 +31,6 @@ public:
       std::bind(&OffboardNode::buttonCallback, this, std::placeholders::_1) 
     );
 
-    rclcpp::QoS qos(rclcpp::KeepLast(5));
-    qos.reliable();
-    qos.durability_volatile();
-    
     timer_ = create_wall_timer(50ms, std::bind(&OffboardNode::onTimer, this));
     arm();
     setOffboardMode();
@@ -43,16 +40,23 @@ private:
   float curr_x_ = 0.0f;
   float curr_y_ = 0.0f;
   float curr_z_ = 0.0f;
-  float target_x_ = 0.0f;
-  float target_y_ = 0.0f;
-  float target_z_ = -2.0f;
-  float target_yaw = 0.0f;
+  float target_x_ = 6.41f;
+  float target_y_ = -10.0f;
+  float target_z_ = -5.0f;
+  float target_yaw = -0.90f;
   int counter_ = 0;
 
   void positionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
     curr_x_ = msg->x;
     curr_y_ = msg->y;
     curr_z_ = msg->z;
+    float yaw_rad = msg->heading;  // radian 단위
+    float yaw_deg = yaw_rad * 180.0 / M_PI;
+
+    RCLCPP_INFO(this->get_logger(),
+        "📍 현재 위치: x=%.2f, y=%.2f, z=%.2f | Yaw: %.2f° (%.2f rad)",
+        curr_x_, curr_y_, curr_z_, yaw_deg, yaw_rad
+    );
   }
 
   uint64_t nowUSec(){
@@ -101,7 +105,7 @@ private:
       offboard_mode_pub_->publish(mode);
   }
 
-  void publishTrajectorySetpoint(float x = 0.0f, float y = 0.0f , float z = -2.0f , float yaw = 0.0) {
+  void publishTrajectorySetpoint(float x = 6.4f, float y = -9.98f , float z = -5.0f , float yaw = -0.90) {
       px4_msgs::msg::TrajectorySetpoint sp{};
       sp.position = {target_x_, target_y_, target_z_};
       sp.yaw = target_yaw;  
