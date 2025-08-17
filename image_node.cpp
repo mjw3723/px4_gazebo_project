@@ -23,26 +23,63 @@ class ImageNode : public rclcpp::Node {
             try {
                 cv::Mat hsv_image;
                 cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
-                hsv_image = hsv_cvt(image);
-                cv::imshow("hsv_image ", hsv_image);
-                cv::waitKey(1);  
+                hsv_center_yellow_mask(image);
             }
             catch (cv_bridge::Exception &e) {
                 std::cerr << "cv_bridge 변환 실패: " << e.what() << std::endl;
             }
         }
 
-        cv::Mat hsv_cvt(const cv::Mat& bgr_image){
-            cv::Mat hsv_image;
-            cv::cvtColor(bgr_image, hsv_image, cv::COLOR_BGR2HSV);
-            
-            cv::Scalar lower_yellow(20,100,100);
-            cv::Scalar upper_yellow(20,255,255);
+        void hsv_center_yellow_mask(const cv::Mat& bgr_image)
+        {
+            // 1. HSV 변환
+            cv::Mat hsv;
+            cv::cvtColor(bgr_image, hsv, cv::COLOR_BGR2HSV);
 
-            cv::Mat yellow_mask;
-            cv::inRange(hsv_image, lower_yellow, upper_yellow , yellow_mask);
-            return hsv_image;
+            // 2. 노란색 범위 설정
+            cv::Scalar lower_yellow(20, 100, 100);
+            cv::Scalar upper_yellow(30, 255, 255);
+            cv::Mat mask;
+            cv::inRange(hsv, lower_yellow, upper_yellow, mask);
+
+            // 3. ROI 설정 (중앙 기준 상하 절반만 보기)
+            int width = mask.cols;
+            int height = mask.rows;
+            int roi_y = height / 2;
+            cv::Mat roi = mask(cv::Rect(0, roi_y, width, height - roi_y));  // 하단 절반만 사용
+
+            // 4. 윤곽선 검출
+            std::vector<std::vector<cv::Point>> contours;
+            cv::findContours(roi, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+            // 5. 중앙과 가장 가까운 좌우 2개 선 찾기
+            int center_x = width / 2;
+            std::vector<std::pair<int, std::vector<cv::Point>>> contour_distances;
+
+            for (const auto& contour : contours) {
+                cv::Rect bound = cv::boundingRect(contour);
+                int cx = bound.x + bound.width / 2;
+                int dist = std::abs(cx - center_x);
+                contour_distances.emplace_back(dist, contour);
+            }
+
+            // 거리 기준 정렬
+            std::sort(contour_distances.begin(), contour_distances.end(),
+                    [](auto& a, auto& b) { return a.first < b.first; });
+
+            // 6. 가장 가까운 2개만 마스크에 그리기
+            cv::Mat result_mask = cv::Mat::zeros(mask.size(), CV_8UC1);
+            for (size_t i = 0; i < std::min(size_t(2), contour_distances.size()); ++i) {
+                cv::drawContours(result_mask(cv::Rect(0, roi_y, width, height - roi_y)),
+                                std::vector<std::vector<cv::Point>>{contour_distances[i].second},
+                                -1, 255, cv::FILLED);
+            }
+
+            cv::imshow("Yellow Mask", mask);
+            cv::imshow("Closest 2 Lines", result_mask);
+            cv::waitKey(1);
         }
+
 
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_camera_sub_;
 

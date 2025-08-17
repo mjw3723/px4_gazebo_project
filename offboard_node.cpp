@@ -3,12 +3,16 @@
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
+#include <px4_msgs/msg/vehicle_odometry.hpp>
 
 #include <sensor_msgs/msg/image.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <cmath>
 #include <std_msgs/msg/string.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <nav_msgs/msg/odometry.hpp>
 
 using namespace std::chrono_literals;
 
@@ -16,15 +20,19 @@ class OffboardNode : public rclcpp::Node {
 public:
   OffboardNode() : Node("offboard_node")
   {
+    this->set_parameter(rclcpp::Parameter("use_sim_time", true));
     offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
     traj_pub_          = create_publisher<px4_msgs::msg::TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
     cmd_pub_           = create_publisher<px4_msgs::msg::VehicleCommand>("/fmu/in/vehicle_command", 10);
+    tf_broadcaster_    = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     rclcpp::QoS qos_profile(10);
     qos_profile.best_effort(); 
-    pos_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      "/fmu/out/vehicle_local_position_v1",  qos_profile,
-      std::bind(&OffboardNode::positionCallback, this, std::placeholders::_1)
+
+    odom_sub_ = create_subscription<px4_msgs::msg::VehicleOdometry>(
+      "/fmu/out/vehicle_odometry", qos_profile,
+      std::bind(&OffboardNode::odomCallback, this, std::placeholders::_1)
     );
+    
 
     button_sub_ = create_subscription<std_msgs::msg::String>(
       "/button_cmd", 10,
@@ -40,23 +48,72 @@ private:
   float curr_x_ = 0.0f;
   float curr_y_ = 0.0f;
   float curr_z_ = 0.0f;
-  float target_x_ = 6.41f;
-  float target_y_ = -10.0f;
+  float target_x_ = 0.0f;
+  float target_y_ = 0.0f;
   float target_z_ = -5.0f;
-  float target_yaw = -0.90f;
+  float target_yaw = 0.0f;
   int counter_ = 0;
 
-  void positionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-    curr_x_ = msg->x;
-    curr_y_ = msg->y;
-    curr_z_ = msg->z;
-    float yaw_rad = msg->heading;  // radian 단위
-    float yaw_deg = yaw_rad * 180.0 / M_PI;
+  void odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg)
+  {
+    geometry_msgs::msg::TransformStamped tf_msg;
+    tf_msg.header.stamp = this->get_clock()->now();
+    tf_msg.header.frame_id = "odom";
+    tf_msg.child_frame_id = "base_link";
 
-    RCLCPP_INFO(this->get_logger(),
-        "📍 현재 위치: x=%.2f, y=%.2f, z=%.2f | Yaw: %.2f° (%.2f rad)",
-        curr_x_, curr_y_, curr_z_, yaw_deg, yaw_rad
-    );
+    tf_msg.transform.translation.x = msg->position[0];
+    tf_msg.transform.translation.y = msg->position[1];
+    tf_msg.transform.translation.z = -msg->position[2];
+
+    tf2::Quaternion q_ned(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);
+    tf2::Quaternion q_rotate;
+    q_rotate.setRPY(M_PI, 0, 0);   
+
+    tf2::Quaternion q_enu = q_rotate * q_ned;
+    q_enu.normalize();
+
+    tf_msg.transform.rotation.x = q_enu.x();
+    tf_msg.transform.rotation.y = q_enu.y();
+    tf_msg.transform.rotation.z = q_enu.z();
+    tf_msg.transform.rotation.w = q_enu.w();
+
+    tf_broadcaster_->sendTransform(tf_msg);
+
+    geometry_msgs::msg::TransformStamped static_tf;
+    static_tf.header.stamp = this->get_clock()->now();
+    static_tf.header.frame_id = "base_link";
+    static_tf.child_frame_id = "camera_link";
+
+    static_tf.transform.translation.x = 0.0;
+    static_tf.transform.translation.y = 0.0;
+    static_tf.transform.translation.z = 0.0;
+
+    tf2::Quaternion q_cam;
+    q_cam.setRPY(0, 0, 0);  
+    static_tf.transform.rotation.x = q_cam.x();
+    static_tf.transform.rotation.y = q_cam.y();
+    static_tf.transform.rotation.z = q_cam.z();
+    static_tf.transform.rotation.w = q_cam.w();
+
+    tf_broadcaster_->sendTransform(static_tf);
+
+    geometry_msgs::msg::TransformStamped static_tf_optical;
+    static_tf_optical.header.stamp = this->get_clock()->now();
+    static_tf_optical.header.frame_id = "camera_link";
+    static_tf_optical.child_frame_id = "camera_optical_frame";
+
+    static_tf_optical.transform.translation.x = 0.0;
+    static_tf_optical.transform.translation.y = 0.0;
+    static_tf_optical.transform.translation.z = 0.0;
+
+    tf2::Quaternion q_optical;
+    q_optical.setRPY(0, 0, 0);  
+    static_tf_optical.transform.rotation.x = q_optical.x();
+    static_tf_optical.transform.rotation.y = q_optical.y();
+    static_tf_optical.transform.rotation.z = q_optical.z();
+    static_tf_optical.transform.rotation.w = q_optical.w();
+
+    tf_broadcaster_->sendTransform(static_tf_optical);
   }
 
   uint64_t nowUSec(){
@@ -144,7 +201,8 @@ private:
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr      cmd_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr button_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr pos_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };
 
 int main(int argc, char** argv)
