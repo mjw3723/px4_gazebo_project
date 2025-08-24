@@ -1,0 +1,23 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# C++ build artifacts
+*.o
+*.so
+*.a
+*.out
+
+# IDE / Editor settings
+.vscode/
+.idea/
+
+# OS / Misc
+.DS_Store
