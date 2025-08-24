@@ -10,7 +10,19 @@ import cv2
 from std_msgs.msg import String
 class ImageSubscriber(Node):
     def __init__(self):
-        super().__init__('image_subscriber')
+        super().__init__(
+            'image_subscriber',
+            allow_undeclared_parameters=True,
+            automatically_declare_parameters_from_overrides=True
+        )
+
+        # ✅ use_sim_time 파라미터 True로 설정
+        self.set_parameters([rclpy.parameter.Parameter(
+            'use_sim_time',
+            rclpy.Parameter.Type.BOOL,
+            True
+        )])
+
         self.bridge = CvBridge()
         self.image_latest_frame = None
         self.depth_latest_frame = None
@@ -74,9 +86,9 @@ class ImageViewer(QWidget):
     def keyPressEvent(self, event):
         msg = String()
         if event.key() == Qt.Key_W:
-            msg.data = "up"
+            msg.data = "forward" 
         elif event.key() == Qt.Key_S:
-            msg.data = "down"
+            msg.data = "backward"
         elif event.key() == Qt.Key_A:
             msg.data = "left"
         elif event.key() == Qt.Key_D:
@@ -85,6 +97,10 @@ class ImageViewer(QWidget):
             msg.data = "yaw_left"
         elif event.key() == Qt.Key_Right:
             msg.data = "yaw_right"
+        elif event.key() == Qt.Key_Up:
+            msg.data = "up"
+        elif event.key() == Qt.Key_Down:
+            msg.data = "down"
         else:
             return
         self.direction_publisher.publish(msg)
