@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt, QPointF , pyqtSignal
 
 class ControlPage(QWidget):
     def __init__(self, parent=None):
@@ -22,11 +23,74 @@ class ControlPage(QWidget):
         self.ang_value = QLabel("wx=0.0000, wy=0.0000, wz=0.0000")
         grid.addWidget(ang_label, 3, 0)
         grid.addWidget(self.ang_value, 3, 1, 1, 2)
+        control_box = QHBoxLayout()
+        self.coordinateView = CoordinateView()
+        self.coordinateView.setMinimumHeight(300) 
+        self.coordinateView.setMinimumWidth(300)
+        self.coordinateView.positionSelected.connect(self.set_position_xy)
+        control_box.addWidget(self.coordinateView,2)
         
+        side_box = QVBoxLayout()
+        x_box = QHBoxLayout()
+        x_label = QLabel("지정 X:")
+        self.x_edit = QLineEdit('0.0')
+        x_box.addWidget(x_label)
+        x_box.addWidget(self.x_edit)
+
+        y_box = QHBoxLayout()
+        y_label = QLabel("지정 Y:")
+        self.y_edit = QLineEdit('0.0')
+        y_box.addWidget(y_label)
+        y_box.addWidget(self.y_edit)
+
+        side_box.addLayout(x_box)
+        side_box.addLayout(y_box)
+        side_box.addStretch(1)
+
+        control_box.addLayout(side_box, 1)
+
         v.addLayout(grid)
-        v.addWidget(self.coordinateView) 
+        v.addLayout(control_box) 
 
     def set_odom(self,position,velocity,ang_velocity):
         self.pos_value.setText(f"x={position[0]:.4f}, y={position[1]:.4f}, z={position[2]:.4f}")
         self.vel_value.setText(f"vx={velocity[0]:.4f}, vy={velocity[1]:.4f}, vz={velocity[2]:.4f}")
         self.ang_value.setText(f"wx={ang_velocity[0]:.4f}, wy={ang_velocity[1]:.4f}, wz={ang_velocity[2]:.4f}")
+
+    def set_position_xy(self,x,y):
+        self.x_edit.setText(x)
+        self.y_edit.setText(y)
+
+
+class CoordinateView(QGraphicsView):
+    positionSelected = pyqtSignal(str, str)
+
+    def __init__(self):
+        super().__init__()
+        self.setMouseTracking(True)
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+
+        self.scene.addLine(-300, 0, 300, 0) 
+        self.scene.addLine(0, -300, 0, 300)  
+
+        self.drone_item = QGraphicsEllipseItem(-5, -5, 10, 10)
+        self.drone_item.setBrush(Qt.red)
+        self.scene.addItem(self.drone_item)
+
+    def update_drone_position(self, x, y):
+        self.drone_item.setPos(QPointF(x, -y))  
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            pos = self.mapToScene(event.pos())
+            pos_x = f"{pos.x():.2f}"
+            pos_y = f"{pos.y():.2f}"
+            self.positionSelected.emit(pos_x,pos_y)
+            print(f"클릭한 좌표: x={pos.x():.2f}, y={-pos.y():.2f}")
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        pos = self.mapToScene(event.pos())  
+        QToolTip.showText(event.globalPos(), f"x={pos.x():.2f}, y={-pos.y():.2f}")
+        super().mouseMoveEvent(event)
