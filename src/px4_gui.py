@@ -10,11 +10,13 @@ from px4_msgs.msg import *
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from pypages.path3dpage import Path3DPage
 from pypages.infopage import InfoPage
+from pypages.controlpage import ControlPage
 
 class SignalBus(QObject):
     info_text = pyqtSignal(str)
     battery_remaining = pyqtSignal(float)
     odom_xyz = pyqtSignal(float,float,float)
+    odom_info = pyqtSignal(object)
 
 class RosSpinThread(QThread):
     def __init__(self, node: Node, parent=None):
@@ -58,7 +60,7 @@ class Px4Node(Node):
         self.odom_xyz_sub = self.create_subscription(
             VehicleOdometry,
             '/fmu/out/vehicle_odometry',
-            self.odom_xyz_callback,
+            self.odom_callback,
             qos
         )
 
@@ -66,9 +68,10 @@ class Px4Node(Node):
         battery_remaining = msg.remaining
         self.bus.battery_remaining.emit(battery_remaining)
 
-    def odom_xyz_callback(self,msg:VehicleOdometry):
+    def odom_callback(self,msg:VehicleOdometry):
         odom_xyz = msg.position
         self.bus.odom_xyz.emit(odom_xyz[0],odom_xyz[1],odom_xyz[2])
+        self.bus.odom_info.emit(msg)
         
     
 class Px4Viewer(QWidget):
@@ -86,8 +89,9 @@ class Px4Viewer(QWidget):
         side.setLayout(left)
 
         btn_info  = QPushButton("px4 정보")
+        btn_control = QPushButton("제어")
         btn_path = QPushButton("이동 경로") 
-        for b in (btn_info,btn_path):
+        for b in (btn_info,btn_control,btn_path):
             b.setCursor(Qt.PointingHandCursor)
             b.setMinimumHeight(40)
             left.addWidget(b)
@@ -98,11 +102,14 @@ class Px4Viewer(QWidget):
 
         self.info_page = InfoPage()
         self.page_path3d = Path3DPage()
+        self.control_page = ControlPage()
         stack.addWidget(self.info_page)
+        stack.addWidget(self.control_page)
         stack.addWidget(self.page_path3d)
 
         btn_info.clicked.connect(lambda: stack.setCurrentIndex(0))
-        btn_path.clicked.connect(lambda: stack.setCurrentIndex(1))
+        btn_control.clicked.connect(lambda: stack.setCurrentIndex(1))
+        btn_path.clicked.connect(lambda: stack.setCurrentIndex(2))
 
         root.addWidget(side, 1)  
         root.addWidget(stack, 4) 
@@ -111,6 +118,7 @@ class Px4Viewer(QWidget):
         self.bus.info_text.connect(self._on_info_text)
         self.bus.battery_remaining.connect(self._on_battery_remaining)
         self.bus.odom_xyz.connect(self._on_odom_xyz)
+        self.bus.odom_info.connect(self._on_odom_info)
 
         rclpy.init(args=None)
 
@@ -128,7 +136,12 @@ class Px4Viewer(QWidget):
     def _on_odom_xyz(self,x,y,z):
         self.page_path3d.update_path_enu(x,y,abs(z))
 
-        
+    def _on_odom_info(self,msg: VehicleOdometry):
+        x, y, z = msg.position
+        vx, vy, vz = msg.velocity
+        wx, wy, wz = msg.angular_velocity
+        self.control_page.set_odom((x, y, z), (vx, vy, vz), (wx, wy, wz))
+
 def main():
     app = QApplication(sys.argv)
     w = Px4Viewer()
