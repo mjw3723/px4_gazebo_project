@@ -27,8 +27,8 @@ class ControlPage(QWidget):
         grid.addWidget(self.ang_value, 3, 1, 1, 2)
         control_box = QHBoxLayout()
         self.coordinateView = CoordinateView()
-        self.coordinateView.setMinimumHeight(300) 
-        self.coordinateView.setMinimumWidth(300)
+        self.coordinateView.setMinimumHeight(200) 
+        self.coordinateView.setMinimumWidth(200)
         self.coordinateView.positionSelected.connect(self.set_position_xy)
         control_box.addWidget(self.coordinateView,2)
         
@@ -64,9 +64,12 @@ class ControlPage(QWidget):
         side_box.addStretch(1)
 
         control_box.addLayout(side_box, 1)
-
+        point_box = QHBoxLayout()
+        point_label = QLabel("지정 X:")
+        point_box.addWidget(point_label)
         v.addLayout(grid)
         v.addLayout(control_box) 
+        v.addLayout(point_box)
 
     def set_odom(self,position,velocity,ang_velocity):
         self.pos_value.setText(f"x={position[0]:.4f}, y={position[1]:.4f}, z={position[2]:.4f}")
@@ -116,3 +119,4 @@ class CoordinateView(QGraphicsView):
         pos = self.mapToScene(event.pos())  
         QToolTip.showText(event.globalPos(), f"x={pos.x():.2f}, y={-pos.y():.2f}")
         super().mouseMoveEvent(event)
+

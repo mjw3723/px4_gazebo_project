@@ -3,7 +3,7 @@
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
-
+#include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <cmath>
 #include <std_msgs/msg/string.hpp>
@@ -32,6 +32,10 @@ public:
     set_point_sub = create_subscription<px4_msgs::msg::TrajectorySetpoint>(
       "/control/trajectory_setpoint",10,
       std::bind(&OffboardNode::pointCallback,this,std::placeholders::_1)
+    );
+    odom_sub = create_subscription<px4_msgs::msg::VehicleOdometry>(
+      "/fmu/out/vehicle_odometry",qos_profile,
+      std::bind(&OffboardNode::odomCallback,this,std::placeholders::_1)
     );
 
     timer_ = create_wall_timer(50ms, std::bind(&OffboardNode::onTimer, this));
@@ -151,13 +155,22 @@ private:
     target_x_ = msg->position[0];
     target_y_ = msg->position[1];
     target_z_ = msg->position[2];
+    target_yaw = std::atan2(target_y_ - curr_y_, target_x_ - curr_x_);    
   }
+
+  void odomCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg){
+    curr_x_ = msg->position[0];
+    curr_y_ = msg->position[1];
+    curr_z_ = msg->position[2];
+    
+  } 
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr  traj_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr      cmd_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr button_sub_;
   rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr set_point_sub;
+  rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub;
 };
 
 int main(int argc, char** argv)
