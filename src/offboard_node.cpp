@@ -29,6 +29,11 @@ public:
       std::bind(&OffboardNode::buttonCallback, this, std::placeholders::_1) 
     );
 
+    set_point_sub = create_subscription<px4_msgs::msg::TrajectorySetpoint>(
+      "/control/trajectory_setpoint",10,
+      std::bind(&OffboardNode::pointCallback,this,std::placeholders::_1)
+    );
+
     timer_ = create_wall_timer(50ms, std::bind(&OffboardNode::onTimer, this));
     arm();
     setOffboardMode();
@@ -135,11 +140,24 @@ private:
         target_z_ += 0.1f;
       }
   }
+
+  void pointCallback(const px4_msgs::msg::TrajectorySetpoint::SharedPtr msg) {
+      RCLCPP_INFO(this->get_logger(),
+          "Target: (%.2f, %.2f, %.2f, yaw=%.2f)",
+          msg->position[0],   
+          msg->position[1],   
+          msg->position[2],  
+          msg->yaw);          
+    target_x_ = msg->position[0];
+    target_y_ = msg->position[1];
+    target_z_ = msg->position[2];
+  }
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr  traj_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr      cmd_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr button_sub_;
+  rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr set_point_sub;
 };
 
 int main(int argc, char** argv)

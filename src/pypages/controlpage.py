@@ -2,6 +2,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QPointF , pyqtSignal
 
 class ControlPage(QWidget):
+    positionSet = pyqtSignal(float, float, float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._build_control_page()
@@ -43,8 +45,22 @@ class ControlPage(QWidget):
         y_box.addWidget(y_label)
         y_box.addWidget(self.y_edit)
 
+        z_box = QHBoxLayout()
+        z_label = QLabel("지정 Z:")
+        self.z_edit = QLineEdit('0.0')
+        z_box.addWidget(z_label)
+        z_box.addWidget(self.z_edit)
+        
+        btn_box = QHBoxLayout()
+        set_position_btn = QPushButton('지정')
+        set_position_btn.clicked.connect(self.on_set_position_clicked)
+        btn_box.addWidget(set_position_btn)
+        
+
         side_box.addLayout(x_box)
         side_box.addLayout(y_box)
+        side_box.addLayout(z_box)
+        side_box.addLayout(btn_box)
         side_box.addStretch(1)
 
         control_box.addLayout(side_box, 1)
@@ -60,6 +76,12 @@ class ControlPage(QWidget):
     def set_position_xy(self,x,y):
         self.x_edit.setText(x)
         self.y_edit.setText(y)
+
+    def on_set_position_clicked(self):
+        x = float(self.x_edit.text())
+        y = float(self.y_edit.text())
+        z = float(self.z_edit.text())
+        self.positionSet.emit(x, y, z)
 
 
 class CoordinateView(QGraphicsView):

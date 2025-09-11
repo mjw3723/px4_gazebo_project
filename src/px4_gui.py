@@ -64,6 +64,8 @@ class Px4Node(Node):
             qos
         )
 
+        self.set_point_pub = self.create_publisher(TrajectorySetpoint, "/control/trajectory_setpoint", 10)
+
     def battery_callback(self,msg:BatteryStatus):
         battery_remaining = msg.remaining
         self.bus.battery_remaining.emit(battery_remaining)
@@ -72,6 +74,13 @@ class Px4Node(Node):
         odom_xyz = msg.position
         self.bus.odom_xyz.emit(odom_xyz[0],odom_xyz[1],odom_xyz[2])
         self.bus.odom_info.emit(msg)
+
+    def publish_setpoint(self, x, y, z, yaw=0.0):
+        msg = TrajectorySetpoint()
+        msg.position = [float(x), float(y), float(z)]
+        msg.yaw = float(yaw)
+        self.set_point_pub.publish(msg)
+        print('adssads')
         
     
 class Px4Viewer(QWidget):
@@ -103,6 +112,7 @@ class Px4Viewer(QWidget):
         self.info_page = InfoPage()
         self.page_path3d = Path3DPage()
         self.control_page = ControlPage()
+        self.control_page.positionSet.connect(self.publish_position)
         stack.addWidget(self.info_page)
         stack.addWidget(self.control_page)
         stack.addWidget(self.page_path3d)
@@ -141,6 +151,9 @@ class Px4Viewer(QWidget):
         vx, vy, vz = msg.velocity
         wx, wy, wz = msg.angular_velocity
         self.control_page.set_odom((x, y, z), (vx, vy, vz), (wx, wy, wz))
+
+    def publish_position(self, x, y, z):
+        self.node.publish_setpoint(x, y, z)
 
 def main():
     app = QApplication(sys.argv)
