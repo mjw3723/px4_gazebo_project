@@ -1,5 +1,12 @@
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QPainter
+
 from PyQt5.QtCore import Qt, QPointF , pyqtSignal
+import open3d as o3d
+import math
+import numpy as np
+import pyqtgraph.opengl as gl
+from time import time
 
 class ControlPage(QWidget):
     positionSet = pyqtSignal(float, float, float)
@@ -27,8 +34,8 @@ class ControlPage(QWidget):
         grid.addWidget(self.ang_value, 3, 1, 1, 2)
         control_box = QHBoxLayout()
         self.coordinateView = CoordinateView()
-        self.coordinateView.setMinimumHeight(200) 
-        self.coordinateView.setMinimumWidth(200)
+        # self.coordinateView.setMinimumHeight(100) 
+        # self.coordinateView.setMinimumWidth(100)
         self.coordinateView.positionSelected.connect(self.set_position_xy)
         control_box.addWidget(self.coordinateView,2)
         
@@ -65,11 +72,14 @@ class ControlPage(QWidget):
 
         control_box.addLayout(side_box, 1)
         point_box = QHBoxLayout()
-        point_label = QLabel("지정 X:")
-        point_box.addWidget(point_label)
+        self.pointcloudView = PointCloudView()
+        self.pointcloudView.setMinimumSize(300, 300) 
+        point_box.addWidget(self.pointcloudView, 1) 
+        
         v.addLayout(grid)
         v.addLayout(control_box) 
         v.addLayout(point_box)
+
 
     def set_odom(self,position,velocity,ang_velocity):
         self.pos_value.setText(f"x={position[0]:.4f}, y={position[1]:.4f}, z={position[2]:.4f}")
@@ -79,6 +89,9 @@ class ControlPage(QWidget):
     def set_position_xy(self,x,y):
         self.x_edit.setText(x)
         self.y_edit.setText(y)
+    
+    def set_cloud_point(self,points):
+        self.pointcloudView.update_cloud(points)
 
     def on_set_position_clicked(self):
         x = float(self.x_edit.text())
@@ -96,9 +109,11 @@ class CoordinateView(QGraphicsView):
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
 
-        self.scene.addLine(-300, 0, 300, 0) 
-        self.scene.addLine(0, -300, 0, 300)  
-
+        self.scene.addLine(-50, 0, 50, 0) 
+        self.scene.addLine(0, -50, 0, 50)
+        self.setRenderHint(QPainter.Antialiasing)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.drone_item = QGraphicsEllipseItem(-5, -5, 10, 10)
         self.drone_item.setBrush(Qt.red)
         self.scene.addItem(self.drone_item)
@@ -120,3 +135,34 @@ class CoordinateView(QGraphicsView):
         QToolTip.showText(event.globalPos(), f"x={pos.x():.2f}, y={-pos.y():.2f}")
         super().mouseMoveEvent(event)
 
+class PointCloudView(gl.GLViewWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.last_update = 0
+        self.scatter = gl.GLScatterPlotItem()
+        self.addItem(self.scatter)
+
+        self.setBackgroundColor('k')  
+        self.opts['distance'] = 100   
+        self.opts['fov'] = 60         
+    
+
+    def update_cloud(self, points: np.ndarray):
+        now = time()
+        if now - self.last_update < 0.5:  
+            return
+        self.last_update = now
+        if points.shape[0] == 0:
+            return
+        
+        if points.shape[0] > 1000:
+            idx = np.random.choice(points.shape[0], 1000, replace=False)
+            points = points[idx]
+
+        colors = np.ones((points.shape[0], 4))  
+        z_norm = (points[:, 2] - points[:, 2].min()) / (points[:, 2].ptp() + 1e-9)
+        colors[:, 0] = z_norm  
+
+        self.removeItem(self.scatter)
+        self.scatter = gl.GLScatterPlotItem(pos=points, color=colors, size=2)
+        self.addItem(self.scatter)

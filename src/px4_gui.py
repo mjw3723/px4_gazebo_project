@@ -8,15 +8,20 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal , QTimer
 from px4_msgs.msg import *
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from sensor_msgs.msg import PointCloud2
 from pypages.path3dpage import Path3DPage
 from pypages.infopage import InfoPage
 from pypages.controlpage import ControlPage
+import sensor_msgs_py.point_cloud2 as pc2
+from sensor_msgs.msg import Image
+import numpy as np
 
 class SignalBus(QObject):
     info_text = pyqtSignal(str)
     battery_remaining = pyqtSignal(float)
     odom_xyz = pyqtSignal(float,float,float)
     odom_info = pyqtSignal(object)
+    cloud_ready = pyqtSignal(object)
 
 class RosSpinThread(QThread):
     def __init__(self, node: Node, parent=None):
@@ -64,7 +69,21 @@ class Px4Node(Node):
             qos
         )
 
+        self.point_sub = self.create_subscription(
+            PointCloud2,
+            "/realsense/camera/points",
+            self.point_callback,
+            10
+        )
+        self.subscription = self.create_subscription(
+            Image,
+            '/realsense/camera/image_raw', 
+            self.camera_callback,
+            10
+        )
+
         self.set_point_pub = self.create_publisher(TrajectorySetpoint, "/control/trajectory_setpoint", 10)
+        self.point_count = 0
 
     def battery_callback(self,msg:BatteryStatus):
         battery_remaining = msg.remaining
@@ -80,7 +99,20 @@ class Px4Node(Node):
         msg.position = [float(x), float(y), float(z)]
         msg.yaw = float(yaw)
         self.set_point_pub.publish(msg)
-        print('adssads')
+    
+    def point_callback(self,msg:PointCloud2):
+        if self.point_count < 20:
+            self.point_count+=1
+            return
+        self.point_count = 0
+        cloud_points = np.array([
+            [p[0], p[1], p[2]]
+            for p in pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
+        ], dtype=np.float32)
+        self.bus.cloud_ready.emit(cloud_points)
+
+    def camera_callback(self,msg:Image):
+        self.bus.camera_ready.emit(msg)
         
     
 class Px4Viewer(QWidget):
@@ -129,7 +161,7 @@ class Px4Viewer(QWidget):
         self.bus.battery_remaining.connect(self._on_battery_remaining)
         self.bus.odom_xyz.connect(self._on_odom_xyz)
         self.bus.odom_info.connect(self._on_odom_info)
-
+        self.bus.cloud_ready.connect(self.control_page.set_cloud_point)
         rclpy.init(args=None)
 
         self.node = Px4Node(self.bus)
@@ -151,6 +183,7 @@ class Px4Viewer(QWidget):
         vx, vy, vz = msg.velocity
         wx, wy, wz = msg.angular_velocity
         self.control_page.set_odom((x, y, z), (vx, vy, vz), (wx, wy, wz))
+    
 
     def publish_position(self, x, y, z):
         self.node.publish_setpoint(x, y, z)
