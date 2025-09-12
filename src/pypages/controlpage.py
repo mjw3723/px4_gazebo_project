@@ -150,11 +150,13 @@ class PointCloudView(gl.GLViewWidget):
         self.addItem(self.scatter)
 
         self.setBackgroundColor('k')  
-        self.opts['distance'] = 100   
-        self.opts['fov'] = 60         
+        self.opts['elevation'] = 0    
+        self.opts['azimuth'] = -90   
+        self.opts['distance'] = 1   
+        self.opts['fov'] = 90        
     
 
-    def update_cloud(self, points: np.ndarray):
+    def update_cloud(self, points: np.ndarray,colors=None):
         now = time()
         if now - self.last_update < 0.5:  
             return
@@ -162,17 +164,19 @@ class PointCloudView(gl.GLViewWidget):
         if points.shape[0] == 0:
             self.clear_point()
             return
-        
-        if points.shape[0] > 1000:
-            idx = np.random.choice(points.shape[0], 1000, replace=False)
-            points = points[idx]
+            
+        x_gl = points[:, 0]
+        y_gl = points[:, 2]
+        z_gl = -points[:, 1]
+        points_gl = np.vstack((x_gl, y_gl, z_gl)).T
 
-        colors = np.ones((points.shape[0], 4))  
-        z_norm = (points[:, 2] - points[:, 2].min()) / (points[:, 2].ptp() + 1e-9)
-        colors[:, 0] = z_norm  
+        if colors is None:
+            # fallback 색상
+            z_norm = (points_gl[:, 1] - points_gl[:, 1].min()) / (points_gl[:, 1].ptp() + 1e-9)
+            colors = np.vstack([z_norm, 1-z_norm, np.zeros_like(z_norm), np.ones_like(z_norm)]).T
 
         self.removeItem(self.scatter)
-        self.scatter = gl.GLScatterPlotItem(pos=points, color=colors, size=2)
+        self.scatter = gl.GLScatterPlotItem(pos=points_gl, color=colors, size=2)
         self.addItem(self.scatter)
 
     def clear_point(self):

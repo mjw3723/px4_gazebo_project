@@ -160,6 +160,7 @@ private:
         pcl::VoxelGrid<pcl::PointXYZ> voxel;
         voxel.setInputCloud(cloud);
         voxel.setLeafSize(0.1f, 0.1f, 0.1f);
+        voxel.setFilterLimits(0.2, 10.0); 
         voxel.filter(*cloud_filtered);
 
         sensor_msgs::msg::PointCloud2 output;
