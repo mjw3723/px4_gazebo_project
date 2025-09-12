@@ -12,7 +12,12 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/voxel_grid.h>
 
 using namespace std::chrono_literals;
 
@@ -31,9 +36,20 @@ public:
         );
         sensor_sub_ = this->create_subscription<px4_msgs::msg::SensorCombined>(
             "/fmu/out/sensor_combined",
-            qos_profile,
+            qos_profile.reliable(),
             std::bind(&SensorNode::sensorCallback, this, std::placeholders::_1)
         );
+        
+        point_sub_ = this-> create_subscription<sensor_msgs::msg::PointCloud2>(
+            "/realsense/camera/points",
+            qos_profile,
+            std::bind(&SensorNode::point_callback,this,std::placeholders::_1)
+        );
+
+        point_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+            "/realsense/camera/points_filtered", 10   
+        );
+
         imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("/imu/data", 10);
         static_tf_pub();
     }   
@@ -132,6 +148,28 @@ private:
         imu_pub_->publish(imu_msg);
     }
 
+    void point_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(*msg, *cloud);
+        RCLCPP_INFO(this->get_logger(), "Filtered cloud published:  points");
+        if (cloud->empty()) {
+            RCLCPP_WARN(this->get_logger(), "Received empty cloud!");
+            return;
+        }
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::VoxelGrid<pcl::PointXYZ> voxel;
+        voxel.setInputCloud(cloud);
+        voxel.setLeafSize(0.1f, 0.1f, 0.1f);
+        voxel.filter(*cloud_filtered);
+
+        sensor_msgs::msg::PointCloud2 output;
+        pcl::toROSMsg(*cloud_filtered, output);
+        output.header = msg->header;
+
+        point_pub_->publish(output);
+        RCLCPP_INFO(this->get_logger(), "Filtered cloud published: %zu points", cloud_filtered->size());
+    }
+
     uint64_t nowUSec(){
         return this->get_clock()->now().nanoseconds() / 1000;
     }
@@ -142,6 +180,8 @@ private:
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
     rclcpp::Subscription<px4_msgs::msg::SensorCombined>::SharedPtr sensor_sub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_sub_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr point_pub_;
 };
 
 int main(int argc, char** argv)

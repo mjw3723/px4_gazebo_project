@@ -72,7 +72,7 @@ class Px4Node(Node):
 
         self.point_sub = self.create_subscription(
             PointCloud2,
-            "/realsense/camera/points",
+            "/realsense/camera/points_filtered",
             self.point_callback,
             10
         )
@@ -113,7 +113,7 @@ class Px4Node(Node):
         self.bus.cloud_ready.emit(cloud_points)
         print(cloud_points.shape[0])
         if cloud_points.shape[0] == 200000:
-            self.bus.cloud_ready.emit(np.empty((0,3)))  
+            self.bus.cloud_ready.emit(np.empty((0,3))) 
         else:
             self.bus.cloud_ready.emit(cloud_points)
 
