@@ -22,6 +22,7 @@ class SignalBus(QObject):
     odom_xyz = pyqtSignal(float,float,float)
     odom_info = pyqtSignal(object)
     cloud_ready = pyqtSignal(object)
+    camera_ready = pyqtSignal(Image)
 
 class RosSpinThread(QThread):
     def __init__(self, node: Node, parent=None):
@@ -110,6 +111,11 @@ class Px4Node(Node):
             for p in pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
         ], dtype=np.float32)
         self.bus.cloud_ready.emit(cloud_points)
+        print(cloud_points.shape[0])
+        if cloud_points.shape[0] == 200000:
+            self.bus.cloud_ready.emit(np.empty((0,3)))  
+        else:
+            self.bus.cloud_ready.emit(cloud_points)
 
     def camera_callback(self,msg:Image):
         self.bus.camera_ready.emit(msg)
@@ -162,6 +168,7 @@ class Px4Viewer(QWidget):
         self.bus.odom_xyz.connect(self._on_odom_xyz)
         self.bus.odom_info.connect(self._on_odom_info)
         self.bus.cloud_ready.connect(self.control_page.set_cloud_point)
+        self.bus.camera_ready.connect(self.control_page.set_camera)
         rclpy.init(args=None)
 
         self.node = Px4Node(self.bus)

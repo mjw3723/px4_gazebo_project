@@ -17,12 +17,14 @@ find_package(OpenCV REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common filters)
+find_package(pcl_conversions REQUIRED)
 
 add_executable(offboard_node src/offboard_node.cpp)
 ament_target_dependencies(offboard_node rclcpp px4_msgs geometry_msgs sensor_msgs cv_bridge std_msgs  nav_msgs)
 
 add_executable(sensor_node src/sensor_node.cpp)
-ament_target_dependencies(sensor_node rclcpp px4_msgs geometry_msgs sensor_msgs  std_msgs tf2 tf2_ros nav_msgs)
+ament_target_dependencies(sensor_node rclcpp px4_msgs geometry_msgs sensor_msgs  std_msgs tf2 tf2_ros nav_msgs pcl_conversions PCL)
 
 add_executable(image_node src/image_node.cpp)
 ament_target_dependencies(image_node rclcpp geometry_msgs sensor_msgs std_msgs cv_bridge)

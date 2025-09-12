@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QPainter,QImage, QPixmap
 
 from PyQt5.QtCore import Qt, QPointF , pyqtSignal
 import open3d as o3d
 import math
 import numpy as np
 import pyqtgraph.opengl as gl
+from sensor_msgs.msg import Image
 from time import time
+from cv_bridge import CvBridge
 
 class ControlPage(QWidget):
     positionSet = pyqtSignal(float, float, float)
@@ -71,14 +73,16 @@ class ControlPage(QWidget):
         side_box.addStretch(1)
 
         control_box.addLayout(side_box, 1)
-        point_box = QHBoxLayout()
+        monitor_box = QHBoxLayout()
         self.pointcloudView = PointCloudView()
         self.pointcloudView.setMinimumSize(300, 300) 
-        point_box.addWidget(self.pointcloudView, 1) 
-        
+        monitor_box.addWidget(self.pointcloudView, 1) 
+        self.cameraView = CameraView()
+        self.cameraView.setMinimumSize(300, 300)
+        monitor_box.addWidget(self.cameraView, 1)
         v.addLayout(grid)
         v.addLayout(control_box) 
-        v.addLayout(point_box)
+        v.addLayout(monitor_box)
 
 
     def set_odom(self,position,velocity,ang_velocity):
@@ -98,6 +102,9 @@ class ControlPage(QWidget):
         y = float(self.y_edit.text())
         z = float(self.z_edit.text())
         self.positionSet.emit(x, y, z)
+
+    def set_camera(self,image):
+        self.cameraView.update_image(image)
 
 
 class CoordinateView(QGraphicsView):
@@ -153,6 +160,7 @@ class PointCloudView(gl.GLViewWidget):
             return
         self.last_update = now
         if points.shape[0] == 0:
+            self.clear_point()
             return
         
         if points.shape[0] > 1000:
@@ -166,3 +174,31 @@ class PointCloudView(gl.GLViewWidget):
         self.removeItem(self.scatter)
         self.scatter = gl.GLScatterPlotItem(pos=points, color=colors, size=2)
         self.addItem(self.scatter)
+
+    def clear_point(self):
+        self.removeItem(self.scatter)
+        self.scatter = gl.GLScatterPlotItem(pos=np.empty((0, 3)), size=2)
+        self.addItem(self.scatter)
+
+class CameraView(QWidget):
+    camera_ready = pyqtSignal(Image)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.bridge = CvBridge()
+
+        self.label = QLabel("카메라 대기 중...")
+        self.label.setScaledContents(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        self.setLayout(layout)
+
+        self.camera_ready.connect(self.update_image)
+
+    def update_image(self, msg: Image):
+        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        h, w, ch = cv_img.shape
+        bytes_per_line = ch * w
+        qimg = QImage(cv_img.data, w, h, bytes_per_line, QImage.Format_BGR888)
+        self.label.setPixmap(QPixmap.fromImage(qimg))
